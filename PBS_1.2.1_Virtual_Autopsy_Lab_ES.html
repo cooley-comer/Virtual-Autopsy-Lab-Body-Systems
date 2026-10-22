@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PBS Virtual Autopsy Lab</title>
+<style>
+:root{--navy:#0B1F3A;--teal:#1F7F8B;--red:#9B1B0A;--coral:#E8604C;--gold:#F2B84B;--pink:#FADBD8;--light:#F1F4F7;--ink:#1A1A1A;--gray:#5C6B7A;--green:#1E7A46;}
+*{box-sizing:border-box}
+body{margin:0;font-family:Calibri,"Segoe UI",Arial,sans-serif;color:var(--ink);background:#fff;line-height:1.45}
+header{background:var(--navy);color:#fff;padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-family:Cambria,Georgia,serif;font-size:20px;margin:0;flex:1;min-width:220px}
+header small{display:block;color:var(--gold);font-family:Calibri,Arial,sans-serif;font-size:13px;font-weight:normal}
+.chip{background:var(--red);color:#fff;border-radius:999px;padding:6px 16px;font-weight:700;font-size:15px}
+.progress{display:flex;gap:5px;padding:10px 20px;background:var(--light);flex-wrap:wrap}
+.dot{width:30px;height:30px;border-radius:50%;background:#fff;border:2px solid #b8c2cc;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--gray)}
+.dot.cur{border-color:var(--red);color:var(--red)}
+.dot.done{background:var(--teal);border-color:var(--teal);color:#fff}
+main{max-width:1100px;margin:0 auto;padding:20px}
+.card{background:var(--light);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+.card.pink{background:var(--pink)} .card.gold{background:#fdf0cf}
+h2{font-family:Cambria,Georgia,serif;color:var(--navy);margin:0 0 8px}
+h3{color:var(--navy);margin:0 0 6px}
+button,.btn{font:inherit;font-weight:700;border:0;border-radius:8px;padding:10px 20px;cursor:pointer;background:var(--red);color:#fff}
+button:hover:not(:disabled){filter:brightness(1.12)}
+button:disabled{background:#b8c2cc;cursor:not-allowed}
+button.alt{background:var(--navy)} button.ghost{background:#fff;color:var(--navy);border:2px solid var(--navy)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+input[type=text],select{font:inherit;padding:8px 10px;border:2px solid #9aa5b1;border-radius:8px;min-width:200px;background:#fff}
+.lab{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start}
+@media(max-width:820px){.lab{grid-template-columns:1fr}}
+.bodywrap{background:#e9f3f5;border-radius:12px;padding:10px;position:sticky;top:10px;text-align:center}
+.bodywrap svg{width:100%;max-width:260px;height:auto}
+.badge{display:inline-block;background:var(--teal);color:#fff;border-radius:6px;padding:2px 10px;font-size:13px;font-weight:700;margin-bottom:6px}
+ul.find{margin:8px 0 0;padding-left:22px} ul.find li{margin:3px 0}
+.q{background:#fff;border:2px solid #d5dce2;border-radius:10px;padding:14px 16px;margin:12px 0}
+.q.ok{border-color:var(--green)} .q.bad{border-color:var(--coral)}
+.q .pts{float:right;font-size:13px;color:var(--gray);font-weight:700}
+.opt{display:block;margin:6px 0;padding:8px 10px;border-radius:8px;border:1px solid #d5dce2;cursor:pointer}
+.opt:hover{background:var(--light)} .opt input{margin-right:8px}
+.fb{margin-top:10px;padding:10px 12px;border-radius:8px;font-size:15px}
+.fb.ok{background:#dff3e6} .fb.bad{background:#fde3df}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}
+table{border-collapse:collapse;width:100%} th,td{border:1px solid #c5ced6;padding:6px 10px;text-align:left} th{background:var(--navy);color:#fff}
+.code{font-family:Consolas,monospace;word-break:break-all;background:#fff;border:2px dashed var(--navy);padding:10px;border-radius:8px;font-size:13px}
+.big{font-size:54px;font-weight:700;color:var(--red);font-family:Cambria,Georgia,serif;line-height:1}
+.sr{position:absolute;left:-9999px}
+/* body svg */
+.org{opacity:.14;transition:opacity .4s,filter .4s}
+.org.on{opacity:1;filter:drop-shadow(0 0 5px #F2B84B)}
+#incision{stroke:#9B1B0A;stroke-width:3;fill:none;stroke-dasharray:400;stroke-dashoffset:400;transition:stroke-dashoffset 1.2s}
+#incision.cut{stroke-dashoffset:0}
+@media print{header .chip,.progress,.noprint{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1><span id="hTitle"></span><small id="hSub"></small></h1>
+  <button id="langBtn" class="ghost" style="padding:6px 14px"></button>
+  <span class="chip" id="scoreChip" aria-live="polite"></span>
+</header>
+<div class="progress" id="progress" aria-label="Progress"></div>
+<main id="stage"></main>
+<script>
+"use strict";
+var DEFAULT_LANG="es";
+var SALT="pbs-1.2.1-vlab";
+var D={en:(function(){
+var SALT="pbs-1.2.1-vlab";
+var CASE={
+  id:"PBS-VL-01", name:"Marcus Bell", age:58,
+  brief:"Marcus Bell, a 58-year-old man, was found at 7:40 a.m. in his attached garage by a neighbor doing a welfare check after a winter storm knocked out power. A portable generator was running inside the closed garage. There were no signs of a struggle. You are the medical examiner's assistant. Complete a full autopsy, one body system at a time."
+};
+var ST=[
+ {key:"skin",sys:"Integumentary system",title:"External examination",show:["skin"],btn:"Begin external examination",
+  find:["71 inches tall, about 190 lb; short gray hair; brown eyes.","Bright cherry-pink lividity on the back and other low areas of the body.","No cuts, bruises, burns, or soot on the skin. Hair and nails are normal.","He was found lying on his back."],
+  qs:[
+   {t:"mc",pts:2,q:"Skin, hair, and nails belong to which body system?",ans:"Integumentary system",opts:["Integumentary system","Skeletal system","Endocrine system","Lymphatic and immune system"],ex:"The integumentary system forms the body's outer covering."},
+   {t:"mc",pts:2,q:"The lividity is on his back, and he was found lying on his back. What does this suggest?",ans:"The body was probably not moved after death",opts:["The body was probably not moved after death","The body was moved after death","He died of a skin disease","Lividity forms only on the front of the body"],ex:"Blood settles where gravity pulls it. Lividity that matches the body's position means the body likely stayed where it was."},
+   {t:"fill",pts:1,q:"Blood settling in the lowest parts of the body after death is called ______ mortis.",ans:["livor","livor mortis"],ex:"Livor mortis is also called lividity."}
+  ]},
+ {key:"skel",sys:"Skeletal system",title:"X-rays and bone examination",show:["skeleton"],btn:"Examine the skeleton",
+  find:["Full-body X-rays show no broken bones.","The skull is intact with no cracks or dents.","Ribs, spine, arms, and legs are normal for his age."],
+  qs:[
+   {t:"mc",pts:2,q:"Which is a function of the skeletal system?",ans:"Protects organs and supports the body",opts:["Protects organs and supports the body","Produces hormones","Filters the blood","Breaks down food"],ex:"Bones support the body, protect organs, and store minerals."},
+   {t:"mc",pts:2,q:"No fractures were found. What can the examiner conclude?",ans:"Blunt-force injury to the bones is unlikely to be the cause of death",opts:["Blunt-force injury to the bones is unlikely to be the cause of death","He definitely died of natural causes","X-rays cannot show broken bones","The skeleton caused his death"],ex:"A normal skeleton makes a fall, beating, or crash less likely, but it does not by itself prove the cause."},
+   {t:"fill",pts:1,q:"The skull protects the ______.",ans:["brain","the brain"],ex:"The skull is the bony case around the brain."}
+  ]},
+ {key:"musc",sys:"Muscular system",title:"Muscle examination",show:["muscle"],btn:"Examine the muscles",
+  find:["Full rigor mortis in the jaw, arms, and legs.","Muscle tissue is normal in color. No bruising inside the muscles.","Body was found at 7:40 a.m."],
+  qs:[
+   {t:"mc",pts:2,q:"What is rigor mortis?",ans:"Stiffening of the muscles after death",opts:["Stiffening of the muscles after death","Bluish settling of blood","Cooling of the body","Clouding of the corneas"],ex:"After death, muscles contract and stiffen."},
+   {t:"mc",pts:2,q:"Full rigor mortis is usually present at about:",ans:"8 to 12 hours after death",opts:["30 minutes after death","8 to 12 hours after death","3 days after death","It never fully develops"],ex:"Rigor begins at 2 to 4 hours and is full at 8 to 12 hours. He likely died the evening before."},
+   {t:"fill",pts:1,q:"The heart is made of ______ muscle.",ans:["cardiac"],ex:"The three muscle types are skeletal, cardiac, and smooth."}
+  ]},
+ {key:"nerv",sys:"Nervous system",title:"Brain examination",show:["brain"],btn:"Examine the brain",
+  find:["The brain weighs 1,420 g and shows mild swelling (edema).","Tissue has a pink-red color. There is no bleeding and no tumor.","No skull injury."],
+  qs:[
+   {t:"mc",pts:2,q:"The brain, spinal cord, and nerves make up which system?",ans:"Nervous system",opts:["Nervous system","Muscular system","Endocrine system","Respiratory system"],ex:"The nervous system controls and coordinates the body with electrical signals."},
+   {t:"mc",pts:2,q:"Brain swelling with no bleeding and no skull injury best fits damage from:",ans:"Too little oxygen reaching the brain (hypoxia)",opts:["Too little oxygen reaching the brain (hypoxia)","A blow to the head","A gunshot wound","A broken bone"],ex:"Brain cells need constant oxygen. Without it they are injured and swell."},
+   {t:"fill",pts:1,q:"The brain and spinal ______ make up the central nervous system.",ans:["cord"],ex:"Nerves outside of these make up the peripheral nervous system."}
+  ]},
+ {key:"cardio",sys:"Cardiovascular system",title:"Y incision: heart and blood",show:["heart","vessels"],incision:true,btn:"Make the Y incision and examine the heart",
+  find:["The heart weighs 390 g.","The coronary arteries are about 30% narrowed. There is no clot and no damaged heart tissue.","The blood is an unusually bright cherry-red."],
+  qs:[
+   {t:"mc",pts:2,q:"Why can the examiner rule out a heart attack as the cause of death?",ans:"The arteries are only mildly narrowed, with no clot and no damaged heart tissue",opts:["The arteries are only mildly narrowed, with no clot and no damaged heart tissue","The heart was too small","Blood is always red","Hearts never cause death"],ex:"A fatal heart attack usually shows serious blockage, a clot, or damaged heart muscle."},
+   {t:"mc",pts:2,q:"Hemoglobin in red blood cells carries:",ans:"Oxygen",opts:["Oxygen","Hormones","Bile","Urine"],ex:"Hemoglobin picks up oxygen in the lungs and delivers it to tissues."},
+   {t:"fill",pts:1,q:"Blood vessels that carry blood away from the heart are called ______.",ans:["arteries","artery"],ex:"Veins carry blood back to the heart."}
+  ]},
+ {key:"resp",sys:"Respiratory system",title:"Airway and lungs",show:["lungs"],btn:"Examine the airway and lungs",
+  find:["The windpipe and bronchi are clear. There is no soot and no burns.","The lungs weigh 680 g and 720 g and are congested with a little fluid.","No sign of inhaled smoke or of a lung infection."],
+  qs:[
+   {t:"mc",pts:2,q:"Where does gas exchange take place?",ans:"Alveoli in the lungs",opts:["Alveoli in the lungs","The stomach","The kidneys","The spinal cord"],ex:"Oxygen enters the blood and carbon dioxide leaves it at the alveoli."},
+   {t:"mc",pts:2,q:"There is no soot in the airway and no burns. This suggests:",ans:"He was not breathing smoke from a fire",opts:["He was not breathing smoke from a fire","He drowned","He had pneumonia","He swallowed poison"],ex:"People who die in fires have soot in the airway. The absence of soot points away from a fire."},
+   {t:"fill",pts:1,q:"The windpipe is called the ______.",ans:["trachea"],ex:"The trachea carries air to the bronchi and lungs."}
+  ]},
+ {key:"dig",sys:"Digestive system",title:"Stomach and intestines",show:["stomach","intestine"],btn:"Examine the digestive organs",
+  find:["About 200 mL of partly digested food (rice, chicken, vegetables) in the stomach.","Esophagus and small and large intestines are normal.","No pills or foreign objects."],
+  qs:[
+   {t:"mc",pts:2,q:"What can partly digested food in the stomach help the examiner estimate?",ans:"About when he last ate, which helps estimate time of death",opts:["About when he last ate, which helps estimate time of death","His height","His blood type","How well his lungs worked"],ex:"The identity and degree of digestion of stomach contents can help estimate time of death."},
+   {t:"mc",pts:2,q:"Which organ mixes food with acid and enzymes to start digestion?",ans:"Stomach",opts:["Stomach","Bladder","Kidney","Trachea"],ex:"The stomach churns food and adds acid and enzymes."},
+   {t:"fill",pts:1,q:"Most nutrients are absorbed in the small ______.",ans:["intestine","intestines"],ex:"The small intestine has folds that give it a large surface area."}
+  ]},
+ {key:"other",sys:"Remaining systems",title:"Urinary, endocrine, lymphatic and immune, reproductive",show:["kidneys","bladder","glands","spleen"],btn:"Examine the remaining organs",
+  find:["Kidneys: normal size, no stones. Bladder: 150 mL of urine.","Adrenal glands, thyroid, and pituitary gland: normal.","Spleen and lymph nodes: normal.","Prostate and testes: normal."],
+  qs:[
+   {t:"sel",pts:1,q:"Kidneys and bladder: normal",ans:"Urinary system",opts:["Urinary system","Endocrine system","Lymphatic and immune system","Reproductive system","Digestive system"],ex:"The kidneys filter blood and the bladder stores urine."},
+   {t:"sel",pts:1,q:"Adrenal, thyroid, and pituitary glands: normal",ans:"Endocrine system",opts:["Urinary system","Endocrine system","Lymphatic and immune system","Reproductive system","Digestive system"],ex:"Endocrine glands release hormones."},
+   {t:"sel",pts:1,q:"Spleen and lymph nodes: normal",ans:"Lymphatic and immune system",opts:["Urinary system","Endocrine system","Lymphatic and immune system","Reproductive system","Digestive system"],ex:"These organs filter fluid and fight foreign substances."},
+   {t:"sel",pts:1,q:"Prostate and testes: normal",ans:"Reproductive system",opts:["Urinary system","Endocrine system","Lymphatic and immune system","Reproductive system","Digestive system"],ex:"The reproductive system produces and transports sperm and egg cells."},
+   {t:"mc",pts:1,q:"Why do examiners record normal findings too?",ans:"To rule out other possible causes of death",opts:["To rule out other possible causes of death","Because normal findings are the cause of death","To make the report longer","Normal findings are never recorded"],ex:"Showing that other systems are healthy helps narrow down the real cause."}
+  ]},
+ {key:"lab",sys:"Laboratory results",title:"Blood and urine tests",show:["samples"],btn:"Open the laboratory report",
+  find:["Carboxyhemoglobin (COHb) in blood: 62%. A non-smoker normally has less than 3%.","Blood alcohol: 0.00%.","Urine drug screen: negative."],
+  qs:[
+   {t:"mc",pts:2,q:"A COHb level of 62% means:",ans:"Carbon monoxide attached to hemoglobin, so the blood could not carry enough oxygen",opts:["Carbon monoxide attached to hemoglobin, so the blood could not carry enough oxygen","His blood had too much sugar","He had a bacterial infection","His kidneys stopped working"],ex:"Carbon monoxide binds hemoglobin more strongly than oxygen does, so tissues are starved of oxygen."},
+   {t:"mc",pts:2,q:"The blood alcohol and drug tests were normal. This:",ans:"Rules out alcohol or drug overdose as the cause",opts:["Rules out alcohol or drug overdose as the cause","Proves he was healthy","Proves a homicide","Means the tests were wrong"],ex:"Negative tests help rule out other chemical causes."},
+   {t:"fill",pts:1,q:"Testing blood and urine for drugs, alcohol, and poisons is called ______ testing.",ans:["toxicology","tox"],ex:"Toxicology tests look for toxic substances."}
+  ]},
+ {key:"final",sys:"Final determination",title:"Cause, mechanism, and manner of death",show:["skin","skeleton","muscle","brain","heart","vessels","lungs","stomach","intestine","kidneys","bladder","glands","spleen"],incision:true,btn:"Review all findings",
+  find:["Scene: generator running in a closed garage during a power outage.","Autopsy: no injuries, no fractures, mild brain swelling, mild artery narrowing, clear airway with no soot, bright cherry-red blood.","Laboratory: COHb 62%, alcohol 0.00%, drug screen negative."],
+  qs:[
+   {t:"sel",pts:2,q:"Cause of death",ans:"Carbon monoxide poisoning",opts:["Carbon monoxide poisoning","Coronary artery disease","Blunt-force head trauma","Smoke inhalation from a fire","Drug overdose"],ex:"The specific cause is the carbon monoxide that built up in the closed garage."},
+   {t:"sel",pts:2,q:"Mechanism of death",ans:"Hypoxia: the brain and body could not get enough oxygen",opts:["Hypoxia: the brain and body could not get enough oxygen","Exsanguination (extreme blood loss)","Cardiac tamponade","Sepsis","Skull fracture"],ex:"The mechanism is what happened inside the body: tissues were starved of oxygen."},
+   {t:"sel",pts:1,q:"Manner of death",ans:"Accident",opts:["Natural","Accident","Homicide","Undetermined"],ex:"A generator running in a closed garage during an outage, with no sign of foul play, points to an accident."}
+  ]}
+];
+
+return {ST:ST,CASE:CASE};})(),es:(function(){
+var SALT="pbs-1.2.1-vlab";
+var CASE={
+  id:"PBS-VL-01", name:"Marcus Bell", age:58,
+  brief:"Marcus Bell, un hombre de 58 años, fue encontrado a las 7:40 a. m. en su garaje adjunto por un vecino que hacía una visita de bienestar después de que una tormenta de invierno cortó la electricidad. Un generador portátil estaba funcionando dentro del garaje cerrado. No había señales de lucha. Tú eres el asistente del médico forense. Completa una autopsia completa, un sistema del cuerpo a la vez."
+};
+var ST=[
+ {key:"skin",sys:"Sistema integumentario",title:"Examen externo",show:["skin"],btn:"Comenzar el examen externo",
+  find:["71 pulgadas de estatura, unas 190 libras; pelo corto y canoso; ojos cafés.","Livideces de color rosa cereza brillante en la espalda y otras zonas bajas del cuerpo.","Sin cortes, moretones, quemaduras ni hollín en la piel. El pelo y las uñas son normales.","Fue encontrado boca arriba."],
+  qs:[
+   {t:"mc",pts:2,q:"¿A qué sistema del cuerpo pertenecen la piel, el pelo y las uñas?",ans:"Sistema integumentario",opts:["Sistema integumentario","Sistema esquelético","Sistema endocrino","Sistema linfático e inmunitario"],ex:"El sistema integumentario forma la cubierta externa del cuerpo."},
+   {t:"mc",pts:2,q:"Las livideces están en su espalda y él fue encontrado boca arriba. ¿Qué sugiere esto?",ans:"Probablemente el cuerpo no fue movido después de la muerte",opts:["Probablemente el cuerpo no fue movido después de la muerte","El cuerpo fue movido después de la muerte","Murió de una enfermedad de la piel","Las livideces solo se forman en el frente del cuerpo"],ex:"La sangre se acumula donde la gravedad la jala. Si las livideces coinciden con la posición del cuerpo, es probable que no se haya movido."},
+   {t:"fill",pts:1,q:"La acumulación de sangre en las partes más bajas del cuerpo después de la muerte se llama ______ mortis.",ans:["livor","livor mortis"],ex:"Livor mortis también se llama lividez."}
+  ]},
+ {key:"skel",sys:"Sistema esquelético",title:"Radiografías y examen de los huesos",show:["skeleton"],btn:"Examinar el esqueleto",
+  find:["Las radiografías de cuerpo completo no muestran huesos rotos.","El cráneo está intacto, sin grietas ni hundimientos.","Las costillas, la columna, los brazos y las piernas son normales para su edad."],
+  qs:[
+   {t:"mc",pts:2,q:"¿Cuál es una función del sistema esquelético?",ans:"Protege los órganos y sostiene el cuerpo",opts:["Protege los órganos y sostiene el cuerpo","Produce hormonas","Filtra la sangre","Descompone los alimentos"],ex:"Los huesos sostienen el cuerpo, protegen los órganos y almacenan minerales."},
+   {t:"mc",pts:2,q:"No se encontraron fracturas. ¿Qué puede concluir el examinador?",ans:"Es poco probable que una lesión por golpe contundente en los huesos sea la causa de muerte",opts:["Es poco probable que una lesión por golpe contundente en los huesos sea la causa de muerte","Definitivamente murió de causas naturales","Las radiografías no pueden mostrar huesos rotos","El esqueleto causó su muerte"],ex:"Un esqueleto normal hace menos probable una caída, una golpiza o un choque, pero no prueba por sí solo la causa."},
+   {t:"fill",pts:1,q:"El cráneo protege el ______.",ans:["cerebro","el cerebro"],ex:"El cráneo es la caja ósea que rodea el cerebro."}
+  ]},
+ {key:"musc",sys:"Sistema muscular",title:"Examen de los músculos",show:["muscle"],btn:"Examinar los músculos",
+  find:["Rigor mortis completo en la mandíbula, los brazos y las piernas.","El tejido muscular tiene color normal. No hay moretones dentro de los músculos.","El cuerpo fue encontrado a las 7:40 a. m."],
+  qs:[
+   {t:"mc",pts:2,q:"¿Qué es el rigor mortis?",ans:"Endurecimiento de los músculos después de la muerte",opts:["Endurecimiento de los músculos después de la muerte","Acumulación azulada de sangre","Enfriamiento del cuerpo","Opacidad de las córneas"],ex:"Después de la muerte, los músculos se contraen y se endurecen."},
+   {t:"mc",pts:2,q:"El rigor mortis completo suele estar presente alrededor de:",ans:"8 a 12 horas después de la muerte",opts:["30 minutos después de la muerte","8 a 12 horas después de la muerte","3 días después de la muerte","Nunca se desarrolla por completo"],ex:"El rigor empieza a las 2 a 4 horas y es completo a las 8 a 12 horas. Probablemente murió la noche anterior."},
+   {t:"fill",pts:1,q:"El corazón está hecho de músculo ______.",ans:["cardiaco","cardíaco"],ex:"Los tres tipos de músculo son esquelético, cardíaco y liso."}
+  ]},
+ {key:"nerv",sys:"Sistema nervioso",title:"Examen del cerebro",show:["brain"],btn:"Examinar el cerebro",
+  find:["El cerebro pesa 1,420 g y muestra una hinchazón leve (edema).","El tejido tiene un color rosa rojizo. No hay sangrado ni tumor.","No hay lesión en el cráneo."],
+  qs:[
+   {t:"mc",pts:2,q:"¿Qué sistema forman el cerebro, la médula espinal y los nervios?",ans:"Sistema nervioso",opts:["Sistema nervioso","Sistema muscular","Sistema endocrino","Sistema respiratorio"],ex:"El sistema nervioso controla y coordina el cuerpo con señales eléctricas."},
+   {t:"mc",pts:2,q:"Una hinchazón del cerebro sin sangrado y sin lesión del cráneo concuerda mejor con daño por:",ans:"Poco oxígeno que llega al cerebro (hipoxia)",opts:["Poco oxígeno que llega al cerebro (hipoxia)","Un golpe en la cabeza","Una herida de bala","Un hueso roto"],ex:"Las células del cerebro necesitan oxígeno constante. Sin él se dañan y se hinchan."},
+   {t:"fill",pts:1,q:"El cerebro y la médula ______ forman el sistema nervioso central.",ans:["espinal"],ex:"Los nervios fuera de estos forman el sistema nervioso periférico."}
+  ]},
+ {key:"cardio",sys:"Sistema cardiovascular",title:"Incisión en Y: corazón y sangre",show:["heart","vessels"],incision:true,btn:"Hacer la incisión en Y y examinar el corazón",
+  find:["El corazón pesa 390 g.","Las arterias coronarias están estrechadas un 30 %. No hay coágulo ni tejido cardíaco dañado.","La sangre es de un rojo cereza brillante poco común."],
+  qs:[
+   {t:"mc",pts:2,q:"¿Por qué el examinador puede descartar un infarto como causa de muerte?",ans:"Las arterias solo están un poco estrechadas, sin coágulo ni tejido cardíaco dañado",opts:["Las arterias solo están un poco estrechadas, sin coágulo ni tejido cardíaco dañado","El corazón era demasiado pequeño","La sangre siempre es roja","Los corazones nunca causan la muerte"],ex:"Un infarto mortal suele mostrar un bloqueo grave, un coágulo o músculo cardíaco dañado."},
+   {t:"mc",pts:2,q:"La hemoglobina de los glóbulos rojos transporta:",ans:"Oxígeno",opts:["Oxígeno","Hormonas","Bilis","Orina"],ex:"La hemoglobina recoge oxígeno en los pulmones y lo entrega a los tejidos."},
+   {t:"fill",pts:1,q:"Los vasos sanguíneos que llevan la sangre lejos del corazón se llaman ______.",ans:["arterias","arteria"],ex:"Las venas llevan la sangre de regreso al corazón."}
+  ]},
+ {key:"resp",sys:"Sistema respiratorio",title:"Vías respiratorias y pulmones",show:["lungs"],btn:"Examinar las vías respiratorias y los pulmones",
+  find:["La tráquea y los bronquios están despejados. No hay hollín ni quemaduras.","Los pulmones pesan 680 g y 720 g y están congestionados con un poco de líquido.","No hay señal de humo inhalado ni de infección pulmonar."],
+  qs:[
+   {t:"mc",pts:2,q:"¿Dónde ocurre el intercambio de gases?",ans:"En los alvéolos de los pulmones",opts:["En los alvéolos de los pulmones","En el estómago","En los riñones","En la médula espinal"],ex:"El oxígeno entra a la sangre y el dióxido de carbono sale en los alvéolos."},
+   {t:"mc",pts:2,q:"No hay hollín en las vías respiratorias ni quemaduras. Esto sugiere que:",ans:"No estaba respirando humo de un incendio",opts:["No estaba respirando humo de un incendio","Se ahogó","Tenía neumonía","Tragó veneno"],ex:"Las personas que mueren en incendios tienen hollín en las vías respiratorias. Su ausencia apunta lejos de un incendio."},
+   {t:"fill",pts:1,q:"El conducto por el que baja el aire hacia los bronquios y los pulmones se llama ______.",ans:["traquea","tráquea"],ex:"La tráquea lleva el aire a los bronquios y los pulmones."}
+  ]},
+ {key:"dig",sys:"Sistema digestivo",title:"Estómago e intestinos",show:["stomach","intestine"],btn:"Examinar los órganos digestivos",
+  find:["Unos 200 mL de comida parcialmente digerida (arroz, pollo, verduras) en el estómago.","El esófago y los intestinos delgado y grueso son normales.","No hay pastillas ni objetos extraños."],
+  qs:[
+   {t:"mc",pts:2,q:"¿Qué puede ayudar a estimar el examinador con la comida parcialmente digerida en el estómago?",ans:"Aproximadamente cuándo comió por última vez, lo que ayuda a estimar la hora de la muerte",opts:["Aproximadamente cuándo comió por última vez, lo que ayuda a estimar la hora de la muerte","Su estatura","Su tipo de sangre","Qué tan bien funcionaban sus pulmones"],ex:"La identidad y el grado de digestión del contenido del estómago pueden ayudar a estimar la hora de la muerte."},
+   {t:"mc",pts:2,q:"¿Qué órgano mezcla la comida con ácido y enzimas para iniciar la digestión?",ans:"Estómago",opts:["Estómago","Vejiga","Riñón","Tráquea"],ex:"El estómago agita la comida y le agrega ácido y enzimas."},
+   {t:"fill",pts:1,q:"La mayoría de los nutrientes se absorben en el intestino ______.",ans:["delgado"],ex:"El intestino delgado tiene pliegues que le dan una gran superficie."}
+  ]},
+ {key:"other",sys:"Sistemas restantes",title:"Urinario, endocrino, linfático e inmunitario, reproductor",show:["kidneys","bladder","glands","spleen"],btn:"Examinar los órganos restantes",
+  find:["Riñones: tamaño normal, sin cálculos. Vejiga: 150 mL de orina.","Glándulas suprarrenales, tiroides y pituitaria: normales.","Bazo y ganglios linfáticos: normales.","Próstata y testículos: normales."],
+  qs:[
+   {t:"sel",pts:1,q:"Riñones y vejiga: normales",ans:"Sistema urinario",opts:["Sistema urinario","Sistema endocrino","Sistema linfático e inmunitario","Sistema reproductor","Sistema digestivo"],ex:"Los riñones filtran la sangre y la vejiga almacena la orina."},
+   {t:"sel",pts:1,q:"Glándulas suprarrenales, tiroides y pituitaria: normales",ans:"Sistema endocrino",opts:["Sistema urinario","Sistema endocrino","Sistema linfático e inmunitario","Sistema reproductor","Sistema digestivo"],ex:"Las glándulas endocrinas liberan hormonas."},
+   {t:"sel",pts:1,q:"Bazo y ganglios linfáticos: normales",ans:"Sistema linfático e inmunitario",opts:["Sistema urinario","Sistema endocrino","Sistema linfático e inmunitario","Sistema reproductor","Sistema digestivo"],ex:"Estos órganos filtran líquido y combaten las sustancias extrañas."},
+   {t:"sel",pts:1,q:"Próstata y testículos: normales",ans:"Sistema reproductor",opts:["Sistema urinario","Sistema endocrino","Sistema linfático e inmunitario","Sistema reproductor","Sistema digestivo"],ex:"El sistema reproductor produce y transporta espermatozoides y óvulos."},
+   {t:"mc",pts:1,q:"¿Por qué los examinadores también anotan los hallazgos normales?",ans:"Para descartar otras posibles causas de muerte",opts:["Para descartar otras posibles causas de muerte","Porque los hallazgos normales son la causa de muerte","Para hacer el informe más largo","Los hallazgos normales nunca se anotan"],ex:"Mostrar que los demás sistemas están sanos ayuda a reducir las posibilidades hasta la causa real."}
+  ]},
+ {key:"lab",sys:"Resultados de laboratorio",title:"Pruebas de sangre y orina",show:["samples"],btn:"Abrir el informe de laboratorio",
+  find:["Carboxihemoglobina (COHb) en la sangre: 62 %. Una persona no fumadora normalmente tiene menos de 3 %.","Alcohol en la sangre: 0.00 %.","Prueba de drogas en la orina: negativa."],
+  qs:[
+   {t:"mc",pts:2,q:"Un nivel de COHb de 62 % significa:",ans:"El monóxido de carbono se unió a la hemoglobina y la sangre no pudo transportar suficiente oxígeno",opts:["El monóxido de carbono se unió a la hemoglobina y la sangre no pudo transportar suficiente oxígeno","Su sangre tenía demasiada azúcar","Tenía una infección bacteriana","Sus riñones dejaron de funcionar"],ex:"El monóxido de carbono se une a la hemoglobina con más fuerza que el oxígeno, y los tejidos se quedan sin oxígeno."},
+   {t:"mc",pts:2,q:"Las pruebas de alcohol y drogas fueron normales. Esto:",ans:"Descarta una sobredosis de alcohol o drogas como causa",opts:["Descarta una sobredosis de alcohol o drogas como causa","Prueba que estaba sano","Prueba un homicidio","Significa que las pruebas estaban mal"],ex:"Las pruebas negativas ayudan a descartar otras causas químicas."},
+   {t:"fill",pts:1,q:"Analizar la sangre y la orina para buscar drogas, alcohol y venenos se llama análisis de ______.",ans:["toxicologia","toxicología","tox"],ex:"Las pruebas de toxicología buscan sustancias tóxicas."}
+  ]},
+ {key:"final",sys:"Determinación final",title:"Causa, mecanismo y manera de muerte",show:["skin","skeleton","muscle","brain","heart","vessels","lungs","stomach","intestine","kidneys","bladder","glands","spleen"],incision:true,btn:"Revisar todos los hallazgos",
+  find:["Escena: generador funcionando en un garaje cerrado durante un apagón.","Autopsia: sin lesiones, sin fracturas, hinchazón leve del cerebro, estrechamiento leve de las arterias, vías respiratorias despejadas sin hollín, sangre de un rojo cereza brillante.","Laboratorio: COHb 62 %, alcohol 0.00 %, prueba de drogas negativa."],
+  qs:[
+   {t:"sel",pts:2,q:"Causa de muerte",ans:"Intoxicación por monóxido de carbono",opts:["Intoxicación por monóxido de carbono","Enfermedad de las arterias coronarias","Trauma craneal por golpe contundente","Inhalación de humo de un incendio","Sobredosis de drogas"],ex:"La causa específica es el monóxido de carbono que se acumuló en el garaje cerrado."},
+   {t:"sel",pts:2,q:"Mecanismo de muerte",ans:"Hipoxia: el cerebro y el cuerpo no recibieron suficiente oxígeno",opts:["Hipoxia: el cerebro y el cuerpo no recibieron suficiente oxígeno","Exanguinación (pérdida extrema de sangre)","Taponamiento cardíaco","Sepsis","Fractura de cráneo"],ex:"El mecanismo es lo que pasó dentro del cuerpo: los tejidos se quedaron sin oxígeno."},
+   {t:"sel",pts:1,q:"Manera de muerte",ans:"Accidente",opts:["Natural","Accidente","Homicidio","Indeterminada"],ex:"Un generador funcionando en un garaje cerrado durante un apagón, sin señales de agresión, apunta a un accidente."}
+  ]}
+];
+
+return {ST:ST,CASE:CASE};})()};
+var UU={en:(function(){var U={lang:"en",title:"Virtual Autopsy Lab: Body Systems",sub:"PLTW Principles of Biomedical Sciences · Lesson 1.2.1 · 50 points",score:"Score",caseHdr:"Case file",howH:"How this lab works",
+how:["There are <b>10 stations</b>, one for each part of the autopsy, worth <b>5 points each (50 total)</b>.","At each station, examine the body, read the findings, then answer the questions about that body system.","You get feedback after every answer. You cannot change an answer once it is checked.","At the end, you decide the <b>cause, mechanism, and manner</b> of death.","<b>When you finish, a results file downloads automatically. You must turn that file in to receive credit for this lab.</b>"],
+nameLbl:"Your name (first and last):",begin:"Begin autopsy",nameErr:"Please enter your first and last name.",stn:"Station",of:"of",hl:"Highlighted",ready:"Ready to continue? Examine this part of the body to see the findings.",findings:"Findings",pt:"pt",pts:"pts",check:"Check answer",needAns:"Please choose or type an answer first.",ok:"Correct.",bad:"Not quite.",ansIs:"The answer is:",stnScore:"Station score",next:"Next station",finish:"Finish lab and download results",choose:"Choose...",ansLbl:"Your answer",chooseLbl:"Choose an answer",
+complete:"Autopsy complete",byStn:"Score by station",stnCol:"Station",ptsCol:"Points",
+reqT:"Required: download your results file",reqB:"You must turn in your downloaded results file to receive credit. It downloads automatically when you finish. If it did not, click the button.",reqBtn:"Download results file",
+doneT:"Results file downloaded",doneB:"Turn in this file:",again:"Download again",
+codeT:"Your completion code",codeH:"This code is also saved inside your downloaded file. Your teacher can check it.",copy:"Copy code",copied:"Code copied.",copyManual:"Select the code above and copy it.",print:"Print report",
+review:"Review your answers",yours:"Your answer",corr:"Correct answer",none:"(none)",
+teacher:"Teacher tools",tHelp:"Paste a student's completion code, or the full text of the student's results file, to check it.",verify:"Verify",invalid:"This code is not valid or was changed.",valid:"Valid.",scored:"scored",on:"on",caseW:"case",stations:"Stations",reset:"Start over (clears this browser)",resetQ:"Clear all progress in this browser?",
+fHead:"PBS Virtual Autopsy Lab: Body Systems",fName:"Name",fCase:"Case",fScore:"Score",fStn:"Station",fCode:"Completion code (turn in this file)",fDetail:"Answer detail",fRight:"correct",fWrong:"incorrect",fileBase:"PBS_virtual_autopsy_"};
+
+return U;})(),es:(function(){var U={lang:"es",title:"Laboratorio virtual de autopsia: Sistemas del cuerpo",sub:"PLTW Principios de las Ciencias Biomédicas · Lección 1.2.1 · 50 puntos",score:"Puntaje",caseHdr:"Expediente del caso",howH:"Cómo funciona este laboratorio",
+how:["Hay <b>10 estaciones</b>, una por cada parte de la autopsia, de <b>5 puntos cada una (50 en total)</b>.","En cada estación, examina el cuerpo, lee los hallazgos y responde las preguntas sobre ese sistema del cuerpo.","Recibes retroalimentación después de cada respuesta. No puedes cambiar una respuesta después de comprobarla.","Al final, decides la <b>causa, el mecanismo y la manera</b> de muerte.","<b>Cuando termines, se descarga automáticamente un archivo de resultados. Debes entregar ese archivo para recibir crédito por este laboratorio.</b>"],
+nameLbl:"Tu nombre (nombre y apellido):",begin:"Comenzar la autopsia",nameErr:"Escribe tu nombre y apellido.",stn:"Estación",of:"de",hl:"Resaltado",ready:"¿Listo para continuar? Examina esta parte del cuerpo para ver los hallazgos.",findings:"Hallazgos",pt:"pt",pts:"pts",check:"Comprobar respuesta",needAns:"Primero elige o escribe una respuesta.",ok:"Correcto.",bad:"No exactamente.",ansIs:"La respuesta es:",stnScore:"Puntaje de la estación",next:"Siguiente estación",finish:"Terminar el laboratorio y descargar resultados",choose:"Elige...",ansLbl:"Tu respuesta",chooseLbl:"Elige una respuesta",
+complete:"Autopsia completa",byStn:"Puntaje por estación",stnCol:"Estación",ptsCol:"Puntos",
+reqT:"Obligatorio: descarga tu archivo de resultados",reqB:"Debes entregar tu archivo de resultados descargado para recibir crédito. Se descarga automáticamente al terminar. Si no se descargó, haz clic en el botón.",reqBtn:"Descargar archivo de resultados",
+doneT:"Archivo de resultados descargado",doneB:"Entrega este archivo:",again:"Descargar de nuevo",
+codeT:"Tu código de finalización",codeH:"Este código también está guardado dentro de tu archivo descargado. Tu maestro puede verificarlo.",copy:"Copiar código",copied:"Código copiado.",copyManual:"Selecciona el código de arriba y cópialo.",print:"Imprimir informe",
+review:"Repasa tus respuestas",yours:"Tu respuesta",corr:"Respuesta correcta",none:"(ninguna)",
+teacher:"Herramientas del maestro",tHelp:"Pega el código de finalización de un estudiante, o el texto completo de su archivo de resultados, para verificarlo.",verify:"Verificar",invalid:"Este código no es válido o fue modificado.",valid:"Válido.",scored:"obtuvo",on:"el",caseW:"caso",stations:"Estaciones",reset:"Empezar de nuevo (borra este navegador)",resetQ:"¿Borrar todo el progreso en este navegador?",
+fHead:"Laboratorio virtual de autopsia de PBS: Sistemas del cuerpo",fName:"Nombre",fCase:"Caso",fScore:"Puntaje",fStn:"Estación",fCode:"Código de finalización (entrega este archivo)",fDetail:"Detalle de respuestas",fRight:"correcta",fWrong:"incorrecta",fileBase:"PBS_autopsia_virtual_"};
+
+return U;})()};
+function BODY(){return '<svg viewBox="0 0 220 470" role="img" aria-label="Diagram of the human body with organ systems highlighted">'+
+'<g fill="#fff" stroke="#5C6B7A" stroke-width="2">'+
+'<circle cx="110" cy="42" r="30"/><rect x="98" y="68" width="24" height="16"/>'+
+'<path d="M68 90 Q110 78 152 90 L158 200 Q160 250 150 300 L70 300 Q60 250 62 200 Z"/>'+
+'<rect x="36" y="94" width="26" height="150" rx="13"/><rect x="158" y="94" width="26" height="150" rx="13"/>'+
+'<rect x="74" y="296" width="30" height="160" rx="14"/><rect x="116" y="296" width="30" height="160" rx="14"/></g>'+
+'<g class="org" id="o-skin"><path d="M68 90 Q110 78 152 90 L158 200 Q160 250 150 300 L70 300 Q60 250 62 200 Z" fill="#f2c9a8" stroke="#c98a5e" stroke-width="3"/><circle cx="110" cy="42" r="30" fill="#f2c9a8" stroke="#c98a5e" stroke-width="3"/><rect x="36" y="94" width="26" height="150" rx="13" fill="#f2c9a8" stroke="#c98a5e" stroke-width="3"/><rect x="158" y="94" width="26" height="150" rx="13" fill="#f2c9a8" stroke="#c98a5e" stroke-width="3"/><rect x="74" y="296" width="30" height="160" rx="14" fill="#f2c9a8" stroke="#c98a5e" stroke-width="3"/><rect x="116" y="296" width="30" height="160" rx="14" fill="#f2c9a8" stroke="#c98a5e" stroke-width="3"/></g>'+
+'<g class="org" id="o-skeleton" stroke="#444" stroke-width="3" fill="none"><circle cx="110" cy="42" r="22" fill="#eee"/><path d="M110 70 V285"/><path d="M80 108 Q110 122 140 108 M76 126 Q110 142 144 126 M76 146 Q110 162 144 146 M80 166 Q110 180 140 166"/><path d="M62 108 L48 230 M158 108 L172 230 M89 300 V440 M131 300 V440"/><ellipse cx="110" cy="290" rx="28" ry="12"/></g>'+
+'<g class="org" id="o-muscle" fill="#c0392b" stroke="#7b241c" stroke-width="2"><rect x="38" y="98" width="22" height="70" rx="11"/><rect x="160" y="98" width="22" height="70" rx="11"/><path d="M76 104 Q110 96 144 104 L140 150 Q110 160 80 150 Z"/><rect x="78" y="306" width="22" height="70" rx="11"/><rect x="120" y="306" width="22" height="70" rx="11"/></g>'+
+'<g class="org" id="o-brain"><ellipse cx="110" cy="36" rx="22" ry="17" fill="#e89aa8" stroke="#a24a5a" stroke-width="3"/><path d="M110 20 V52 M96 30 Q104 36 98 46 M124 30 Q116 36 122 46" stroke="#a24a5a" stroke-width="2" fill="none"/></g>'+
+'<g class="org" id="o-lungs"><ellipse cx="88" cy="150" rx="20" ry="36" fill="#f4a6b3" stroke="#a24a5a" stroke-width="3"/><ellipse cx="132" cy="150" rx="20" ry="36" fill="#f4a6b3" stroke="#a24a5a" stroke-width="3"/><path d="M110 98 V130" stroke="#a24a5a" stroke-width="4"/></g>'+
+'<g class="org" id="o-heart"><path d="M110 168 C90 150 98 134 112 144 C124 134 134 150 110 168 Z" fill="#c0392b" stroke="#7b241c" stroke-width="3"/></g>'+
+'<g class="org" id="o-vessels" stroke="#c0392b" stroke-width="3" fill="none"><path d="M110 144 V120 M110 168 V290 M110 290 L90 440 M110 290 L130 440 M110 120 L110 84" /><path d="M110 150 L60 110 M110 150 L160 110" stroke="#2c5aa0"/></g>'+
+'<g class="org" id="o-stomach"><path d="M118 192 Q150 186 148 212 Q146 236 122 228 Q108 222 118 192 Z" fill="#f0b27a" stroke="#a04000" stroke-width="3"/></g>'+
+'<g class="org" id="o-intestine"><path d="M82 240 H138 V256 H82 Z M82 262 H138 V278 H82 Z" fill="#f5cba7" stroke="#a04000" stroke-width="3"/></g>'+
+'<g class="org" id="o-kidneys"><ellipse cx="86" cy="218" rx="8" ry="14" fill="#a93226" stroke="#641e16" stroke-width="2"/><ellipse cx="134" cy="218" rx="8" ry="14" fill="#a93226" stroke="#641e16" stroke-width="2"/></g>'+
+'<g class="org" id="o-bladder"><circle cx="110" cy="286" r="11" fill="#f9e79f" stroke="#b7950b" stroke-width="3"/></g>'+
+'<g class="org" id="o-glands"><ellipse cx="110" cy="80" rx="12" ry="5" fill="#7d3c98" stroke="#4a235a" stroke-width="2"/><circle cx="86" cy="204" r="4" fill="#7d3c98"/><circle cx="134" cy="204" r="4" fill="#7d3c98"/></g>'+
+'<g class="org" id="o-spleen"><ellipse cx="144" cy="196" rx="7" ry="12" fill="#6c3483" stroke="#4a235a" stroke-width="2"/></g>'+
+'<g class="org" id="o-samples"><rect x="2" y="330" width="22" height="60" rx="6" fill="#c0392b" stroke="#641e16" stroke-width="2"/><rect x="28" y="330" width="22" height="60" rx="6" fill="#f7dc6f" stroke="#7d6608" stroke-width="2"/><rect x="170" y="330" width="22" height="60" rx="6" fill="#d7bde2" stroke="#4a235a" stroke-width="2"/></g>'+
+'<path id="incision" d="M72 98 L110 150 L148 98 M110 150 V292"/></svg>';}
+
+var ST=D.en.ST,CASE=D.en.CASE,U=UU.en;
+var TOTAL=0; ST.forEach(function(s){s.qs.forEach(function(q){TOTAL+=q.pts;});});
+var S={name:"",screen:"intro",i:0,ans:{},seen:{},order:{},dl:false,dlName:"",lang:DEFAULT_LANG};
+var KEY="pbs-vlab-v3";
+function setLang(l){S.lang=l;ST=D[l].ST;CASE=D[l].CASE;U=UU[l];document.documentElement.lang=l;document.title=U.title;document.getElementById("hTitle").textContent=U.title;document.getElementById("hSub").textContent=U.sub;var b=document.getElementById("langBtn");b.textContent=l==="en"?"Español":"English";b.setAttribute("aria-label",l==="en"?"Cambiar a español":"Switch to English");}
+function givenText(q,a){return q.t==="fill"?a.given:q.opts[a.given];}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.screen)S=o;}}catch(e){}}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function norm(s){return String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g," ").replace(/\b(the|a|an|el|la|los|las|un|una)\b/g," ").replace(/\s+/g," ").trim();}
+function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
+function qid(si,qi){return si+"-"+qi;}
+function stationScore(si){var t=0;ST[si].qs.forEach(function(q,qi){var a=S.ans[qid(si,qi)];if(a)t+=a.pts;});return t;}
+function stationMax(si){var t=0;ST[si].qs.forEach(function(q){t+=q.pts;});return t;}
+function totalScore(){var t=0;ST.forEach(function(s,i){t+=stationScore(i);});return t;}
+function stationDone(si){return ST[si].qs.every(function(q,qi){return S.ans[qid(si,qi)];});}
+function optsFor(si,qi){var k=qid(si,qi);var q=ST[si].qs[qi];var idx=q.opts.map(function(_,i){return i;});if(q.t==="sel")return idx;if(!S.order[k])S.order[k]=shuffle(idx);return S.order[k];}
+function bodySVG(){return BODY();}
+function setBody(si){var st=ST[si];document.querySelectorAll(".org").forEach(function(g){g.classList.remove("on");});
+ st.show.forEach(function(k){var e=document.getElementById("o-"+k);if(e)e.classList.add("on");});
+ var inc=document.getElementById("incision");if(inc){inc.classList.toggle("cut",si>=4);}}
+function grade(si,qi,given){var q=ST[si].qs[qi];var ok=false;
+ if(q.t==="fill"){ok=q.ans.some(function(a){return norm(a)===norm(given);});}else ok=(q.opts[given]===q.ans);
+ S.ans[qid(si,qi)]={given:given,ok:ok,pts:ok?q.pts:0};save();}
+function answerText(q){return q.t==="fill"?q.ans[0]:q.ans;}
+function updateChrome(){document.getElementById("scoreChip").textContent=U.score+": "+totalScore()+" / "+TOTAL;
+ var p=document.getElementById("progress");p.innerHTML="";
+ if(S.screen==="intro"){p.style.display="none";return;}p.style.display="flex";
+ ST.forEach(function(s,i){var d=document.createElement("div");d.className="dot"+(S.screen==="results"||stationDone(i)?" done":(i===S.i?" cur":""));d.textContent=i+1;d.title=s.title;p.appendChild(d);});}
+
+function renderIntro(){
+ document.getElementById("stage").innerHTML='<div class="card"><h2>'+U.caseHdr+' '+CASE.id+'</h2><p>'+esc(CASE.brief)+'</p></div>'+
+ '<div class="card pink"><h3>'+U.howH+'</h3><ul>'+U.how.map(function(x){return "<li>"+x+"</li>";}).join("")+'</ul></div>'+
+ '<div class="card"><label for="nm"><b>'+U.nameLbl+'</b></label><br><input type="text" id="nm" autocomplete="off" value="'+esc(S.name)+'"> <button id="go">'+U.begin+'</button><p id="err" style="color:#9B1B0A;margin:6px 0 0"></p></div>';
+ document.getElementById("go").onclick=function(){var v=document.getElementById("nm").value.trim();if(v.length<3){document.getElementById("err").textContent=U.nameErr;return;}S.name=v;S.screen="lab";S.i=0;save();render();};}
+
+function renderLab(){
+ var si=S.i,st=ST[si],stage=document.getElementById("stage"),seen=!!S.seen[si];
+ var h='<div class="lab"><div class="bodywrap">'+bodySVG()+'<p class="noprint" style="margin:6px 0 0;font-size:13px;color:#5C6B7A">'+U.hl+': '+esc(st.sys)+'</p></div><div>';
+ h+='<span class="badge">'+U.stn+' '+(si+1)+' '+U.of+' '+ST.length+' · '+esc(st.sys)+'</span><h2>'+esc(st.title)+'</h2>';
+ if(!seen){h+='<div class="card"><p>'+U.ready+'</p><button id="exam">'+esc(st.btn)+'</button></div>';}
+ else{
+  h+='<div class="card gold"><h3>'+U.findings+'</h3><ul class="find">'+st.find.map(function(f){return "<li>"+esc(f)+"</li>";}).join("")+'</ul></div>';
+  st.qs.forEach(function(q,qi){var k=qid(si,qi),a=S.ans[k];
+   h+='<div class="q'+(a?(a.ok?" ok":" bad"):"")+'" data-qi="'+qi+'"><span class="pts">'+q.pts+' '+(q.pts>1?U.pts:U.pt)+'</span><b>'+(qi+1)+'. '+esc(q.q)+'</b>';
+   var dis=a?" disabled":"";
+   if(q.t==="mc"){optsFor(si,qi).forEach(function(oi){h+='<label class="opt"><input type="radio" name="q'+qi+'" value="'+oi+'"'+dis+(a&&a.given===oi?" checked":"")+'>'+esc(q.opts[oi])+'</label>';});}
+   else if(q.t==="fill"){h+='<p style="margin:8px 0 0"><input type="text" id="f'+qi+'" autocomplete="off" aria-label="'+U.ansLbl+'" value="'+(a?esc(a.given):"")+'"'+dis+'></p>';}
+   else{h+='<p style="margin:8px 0 0"><select id="s'+qi+'" aria-label="'+U.chooseLbl+'"'+dis+'><option value="">'+U.choose+'</option>'+q.opts.map(function(o,oi){return '<option value="'+oi+'"'+(a&&a.given===oi?" selected":"")+'>'+esc(o)+'</option>';}).join("")+'</select></p>';}
+   if(!a)h+='<div class="row"><button class="alt chk" data-qi="'+qi+'">'+U.check+'</button></div>';
+   else h+='<div class="fb '+(a.ok?"ok":"bad")+'" role="status">'+(a.ok?"<b>"+U.ok+"</b> ":"<b>"+U.bad+"</b> "+U.ansIs+" "+esc(answerText(q))+". ")+esc(q.ex)+'</div>';
+   h+='</div>';});
+  var last=si===ST.length-1;
+  h+='<div class="row"><span>'+U.stnScore+': <b>'+stationScore(si)+' / '+stationMax(si)+'</b></span><button id="next"'+(stationDone(si)?"":" disabled")+'>'+(last?U.finish:U.next)+'</button></div>';
+ }
+ h+='</div></div>';stage.innerHTML=h;setBody(si);
+ var ex=document.getElementById("exam");if(ex)ex.onclick=function(){S.seen[si]=true;save();render();};
+ stage.querySelectorAll(".chk").forEach(function(b){b.onclick=function(){var qi=+b.dataset.qi,q=st.qs[qi],given="";
+  if(q.t==="mc"){var r=stage.querySelector('input[name="q'+qi+'"]:checked');given=r?+r.value:"";}
+  else if(q.t==="fill")given=document.getElementById("f"+qi).value.trim();
+  else{var sv=document.getElementById("s"+qi).value;given=sv===""?"":+sv;}
+  if(given===""){alert(U.needAns);return;}
+  grade(si,qi,given);render();};});
+ var nx=document.getElementById("next");if(nx)nx.onclick=function(){if(si===ST.length-1){S.screen="results";save();render();window.scrollTo(0,0);doDownload();}else{S.i=si+1;save();render();window.scrollTo(0,0);}};}
+
+function fnv(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)>>>0;}return h.toString(36);}
+function makeCode(){var p=ST.map(function(s,i){return stationScore(i);});var o={n:S.name,s:totalScore(),p:p,c:CASE.id,d:new Date().toISOString().slice(0,10),l:S.lang};
+ var b=btoa(unescape(encodeURIComponent(JSON.stringify(o))));return b+"."+fnv(b+SALT);}
+function readCode(c){c=(c||"").trim().split(/\s+/).pop()||"";var i=c.lastIndexOf(".");if(i<1)return null;var b=c.slice(0,i),h=c.slice(i+1);
+ if(fnv(b+SALT)!==h)return {valid:false};try{var o=JSON.parse(decodeURIComponent(escape(atob(b))));o.valid=true;return o;}catch(e){return {valid:false};}}
+function fileName(){return U.fileBase+S.name.replace(/[^A-Za-z0-9\u00C0-\u017F]+/g,"_")+".txt";}
+function fileText(){var tot=totalScore();var t=U.fHead+"\n"+U.fName+": "+S.name+"\n"+U.fCase+": "+CASE.id+"\n"+U.fScore+": "+tot+" / "+TOTAL+"\n\n";
+ ST.forEach(function(s,i){t+=U.fStn+" "+(i+1)+" ("+s.sys+"): "+stationScore(i)+" / "+stationMax(i)+"\n";});
+ t+="\n"+U.fDetail+":\n";
+ ST.forEach(function(s,si){s.qs.forEach(function(q,qi){var a=S.ans[qid(si,qi)]||{};t+=(si+1)+"."+(qi+1)+" ["+(a.ok?U.fRight:U.fWrong)+"] "+(a.given===undefined?U.none:givenText(q,a))+"\n";});});
+ t+="\n"+U.fCode+":\n"+makeCode()+"\n";return t;}
+function doDownload(){try{var b=new Blob([fileText()],{type:"text/plain;charset=utf-8"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=fileName();document.body.appendChild(a);a.click();a.remove();S.dl=true;S.dlName=fileName();save();if(S.screen==="results")render();}catch(e){}}
+
+function renderResults(){
+ var tot=totalScore(),code=makeCode();
+ var rows=ST.map(function(s,i){return "<tr><td>"+(i+1)+"</td><td>"+esc(s.sys)+": "+esc(s.title)+"</td><td>"+stationScore(i)+" / "+stationMax(i)+"</td></tr>";}).join("");
+ var review=ST.map(function(s,si){return '<details><summary><b>'+U.stn+' '+(si+1)+': '+esc(s.sys)+'</b></summary>'+s.qs.map(function(q,qi){var a=S.ans[qid(si,qi)]||{};
+   return '<p style="margin:6px 0 6px 12px">'+(a.ok?"✔ ":"✘ ")+esc(q.q)+'<br>'+U.yours+': '+esc(a.given===undefined?U.none:givenText(q,a))+(a.ok?"":'<br>'+U.corr+': <b>'+esc(answerText(q))+'</b>')+'</p>';}).join("")+'</details>';}).join("");
+ var banner=S.dl?'<div class="card" style="background:#dff3e6"><h3>'+U.doneT+'</h3><p>'+U.doneB+' <b>'+esc(S.dlName||fileName())+'</b></p><button class="alt" id="dl">'+U.again+'</button></div>'
+  :'<div class="card" style="background:#fde3df;border:3px solid #9B1B0A"><h3>'+U.reqT+'</h3><p>'+U.reqB+'</p><button id="dl">'+U.reqBtn+'</button></div>';
+ var codeCard=S.dl?'<div class="card pink"><h3>'+U.codeT+'</h3><p>'+U.codeH+'</p><div class="code" id="codebox">'+esc(code)+'</div><div class="row noprint"><button id="cp">'+U.copy+'</button><button class="ghost" id="pr">'+U.print+'</button></div><p id="cpmsg" aria-live="polite"></p></div>':'';
+ document.getElementById("stage").innerHTML=
+ '<div class="card"><h2>'+U.complete+': '+esc(S.name)+'</h2><div class="big">'+tot+' / '+TOTAL+'</div><p>'+Math.round(tot/TOTAL*100)+'% · '+U.caseW+' '+CASE.id+'</p></div>'+banner+
+ '<div class="card"><h3>'+U.byStn+'</h3><table><tr><th>#</th><th>'+U.stnCol+'</th><th>'+U.ptsCol+'</th></tr>'+rows+'</table></div>'+codeCard+
+ '<div class="card"><h3>'+U.review+'</h3>'+review+'</div>'+
+ '<details class="card noprint"><summary><b>'+U.teacher+'</b></summary><p>'+U.tHelp+'</p><textarea id="tc" rows="3" style="width:100%"></textarea> <button class="alt" id="tv" style="margin-top:8px">'+U.verify+'</button><div id="tout" style="margin-top:10px"></div><hr><button class="ghost" id="reset">'+U.reset+'</button></details>';
+ document.getElementById("dl").onclick=doDownload;
+ var cp=document.getElementById("cp");if(cp)cp.onclick=function(){var m=document.getElementById("cpmsg");try{navigator.clipboard.writeText(code).then(function(){m.textContent=U.copied;},function(){m.textContent=U.copyManual;});}catch(e){m.textContent=U.copyManual;}};
+ var pr=document.getElementById("pr");if(pr)pr.onclick=function(){window.print();};
+ document.getElementById("tv").onclick=function(){var o=readCode(document.getElementById("tc").value),out=document.getElementById("tout");
+  if(!o||!o.valid){out.innerHTML='<div class="fb bad">'+U.invalid+'</div>';return;}
+  out.innerHTML='<div class="fb ok"><b>'+U.valid+'</b> '+esc(o.n)+' '+U.scored+' <b>'+o.s+' / '+TOTAL+'</b> '+U.on+' '+esc(o.d)+' ('+U.caseW+' '+esc(o.c)+').<br>'+U.stations+': '+o.p.map(function(x,i){return (i+1)+"="+x;}).join(", ")+'</div>';};
+ document.getElementById("reset").onclick=function(){if(confirm(U.resetQ)){try{localStorage.removeItem(KEY);}catch(e){}var lg=S.lang;S={name:"",screen:"intro",i:0,ans:{},seen:{},order:{},dl:false,dlName:"",lang:lg};render();}};}
+
+function render(){updateChrome();if(S.screen==="intro")renderIntro();else if(S.screen==="lab")renderLab();else renderResults();}
+load();if(!D[S.lang])S.lang=DEFAULT_LANG;setLang(S.lang);
+document.getElementById("langBtn").onclick=function(){setLang(S.lang==="en"?"es":"en");save();render();};
+render();
+
+</script>
+</body>
+</html>
